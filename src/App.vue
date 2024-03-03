@@ -1,14 +1,16 @@
 <template>
   <div id="app">
-    <AstroChart />
+    <SouthIndianChart />
   </div>
 </template>
 
 <script>
-import AstroChart from './components/AstroChart.vue';
+import SouthIndianChart from './components/SouthIndianChart.vue';
 
 export default {
   name: 'App',
-  components: { AstroChart},
+  components: {
+    SouthIndianChart
+  }
 };
 </script>
