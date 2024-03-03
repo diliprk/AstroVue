@@ -4,13 +4,13 @@
 An open-source project using `Vue.js` that renders South-Indian style horoscope chart and tables for the Krishnamurthi Paddhati system.
 This project is a companion to the [VedicAstro](https://github.com/diliprk/VedicAstro) as it uses the FastAPI call from
 the `VedicAstro` library to get the positions, aspects and significators of the planets and houses. <br>
-
-**NOTE**: Please get this [VedicAstroAPI python API](https://github.com/diliprk/VedicAstro/blob/main/VedicAstroAPI.py) running, by following the installation steps in the [VedicAstro](https://github.com/diliprk/VedicAstro/tree/main#installation) Git Repo. 
-
 Encouraging forks and contributions (pull requests) to develop this project further
 
 
 ## Project setup
+**NOTE**: Please get this [VedicAstro python API](https://github.com/diliprk/VedicAstro/blob/main/VedicAstroAPI.py) running, by following the installation steps in the [VedicAstro](https://github.com/diliprk/VedicAstro/tree/main#installation) Git Repo. 
+
+
 Install the required dependencies for the main `astrovue` app.
 ```bash
 npm install
