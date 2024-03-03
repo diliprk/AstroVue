@@ -8,9 +8,9 @@ Encouraging forks and contributions (pull requests) to develop this project furt
 
 
 ## Project setup
-**NOTE**: Please get this [VedicAstro python API](https://github.com/diliprk/VedicAstro/blob/main/VedicAstroAPI.py) running, by following the installation steps in the [VedicAstro](https://github.com/diliprk/VedicAstro/tree/main#installation) Git Repo. 
+**NOTE**: Please get this [VedicAstro python API](https://github.com/diliprk/VedicAstro/blob/main/VedicAstroAPI.py) running, by following the [installation steps](https://github.com/diliprk/VedicAstro/tree/main#installation) Git Repo. 
 
-
+After cloning this git repo, `cd astrovue` and then <br>
 Install the required dependencies for the main `astrovue` app.
 ```bash
 npm install
