@@ -17,9 +17,9 @@ npm install
 ```
 
 ### Compiles and hot-reloads for development
-Start the `astrovue` app in the current terminal
+Start the `astrovue` app and associated `charts_db_server.js` expressJS server in the current terminal
 ```bash
-npm run serve
+npm run start
 ```
 
 ### Compiles and minifies for production
