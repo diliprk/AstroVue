@@ -23,3 +23,4 @@ pnpm-debug.log*
 *.sln
 *.sw?
 src/components/LocationService.vue
+server/data/horary_charts.csv

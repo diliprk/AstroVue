@@ -1,25 +1,47 @@
 <template>
-  <div>
+  <div >
+    <div class="conditional-container">
+    <div v-if="selectedHoraryNumber" class="horary-question-container">
+      <label for="horaryQuestion"><b>Horary Question:</b> </label>
+      <input id="horaryQuestion" type="text" v-model="horaryQuestion" placeholder="Enter your question" class="horary-question">
+    </div>  
+    <div v-if="selectedHoraryNumber" class="horary-save-load-buttons-container">
+        <button @click="saveHoraryChart">Save Horary Chart</button>
+        <button @click="loadHoraryChart">Load Horary Chart</button>
+    </div>
+  </div>
   <div class="input-container">
-    <br><br><br><br><br>
+    <br><br><br><br>
     <label for = "name"> Name:      </label>
     <input id = "name" type="text" v-model="subject.name" placeholder="Name">
     <div class="location-picker-container">
       <label for="location">Location: </label>
-      <select id="location" v-model="selectedLocationCity">
+      <select id="location" v-model="selectedLocationCity"> 
         <option disabled value="">Please select a location</option>
         <option v-for="(coords, city) in locations" :value="city" :key="city">{{ city }}</option>
       </select>
-    </div>      
+    </div>
+    <div class="horary-number-container">
+      <label for="horaryNumber">Horary Number: </label>
+      <select id="horaryNumber" v-model="selectedHoraryNumber">
+        <option value="">None</option>
+        <option v-for="num in 249" :value="num" :key="num">{{ num }}</option>
+      </select>
+      <div class="horary-quick-selection">
+        <button @click="selectRandomHoraryNumber">Select Random Nr</button>
+        <button @click="setCurrentTime" class="current-time-button">Get Current Time</button>
+      </div>
+    </div>
+    <br>    
     <div class="datepicker-container">
-      <label for = "datepicker-container"> <b>Select Date:</b>     </label>
-      <vue3Datepicker v-model="selectedDate" :format="formatDate"></vue3Datepicker><br>
+      <label for = "datepicker-container"> <b>Select Date:</b>    </label>
+      <vue3Datepicker v-model="selectedDate" :format="formatDate"></vue3Datepicker>
       <label for="hour">Hour:</label>
       <input id="hour" type="range" min="0" max="23" v-model.number="selectedHour" class="slider"> <br>
       <label for="minute">Mins:</label>
       <input id="minute" type="range" min="0" max="59" v-model.number="selectedMinute" class="slider"><br>
       <label for="second">Secs:</label>
-    <input id="second" type="range" min="0" max="59" v-model.number="selectedSecond" class="slider">
+      <input id="second" type="range" min="0" max="59" v-model.number="selectedSecond" class="slider">
     </div>
     <div class="ayanamsa-settings">
       <label> <b>Chart Settings</b> <br><br></label>
@@ -100,7 +122,11 @@
       <br><br>
       <label for = "dasa-table"> <b>VimshottariDasa:</b></label>
       <VimshottariDasaTable :vimsoDasaData="vimso_dasa_data"/> 
-  </div>           
+  </div>
+  <div v-if="showHoraryChartPopup" class="horary-chart-popup">
+    <HoraryChartsDB :horaryChartData="horaryChartData" @chart-selected="handleChartSelected"/>
+    <button @click="showHoraryChartPopup = false">Close</button>
+  </div>      
 </div>
 </template>
 
@@ -108,6 +134,7 @@
 <script>
 import * as d3 from 'd3';
 import axios from 'axios';
+import Papa from 'papaparse';
 import locations from '../utc_locations.js';
 import Toggle from '@vueform/toggle';
 import vue3Datepicker from 'vue3-datepicker';
@@ -117,6 +144,7 @@ import PlanetAspects from './PlanetAspects.vue';
 import HousesDataTable from './HousesDataTable.vue';
 import HouseSignificators from './HouseSignificators.vue';
 import VimshottariDasaTable from './VimshottariDasaTable.vue';
+import HoraryChartsDB from './HoraryChartsDB.vue';
 
 // import locationService from '../locationService.js'; 
 
@@ -124,6 +152,7 @@ export default {
   components: {
     vue3Datepicker,
     Toggle,
+    HoraryChartsDB,
     PlanetsDataTable,
     HousesDataTable,
     PlanetSignificators,
@@ -138,19 +167,21 @@ export default {
       selectedMinute: 0,
       selectedSecond: 0,
       selectedLocationCity: 'Coimbatore',
+      selectedHoraryNumber: '',
+      horaryQuestion: '',
+      horaryChartData: [],
+      showHoraryChartPopup: false,
       locations : locations,
-      selectedAyanamsa: 'Lahiri',
+      selectedAyanamsa: 'Krishnamurti',
       selectedHouseSystem: 'Placidus',
       showHouses: true,
       showZodiacDetails: 'Symbols',
       zodiacDetailsOptions: ['None', 'English', 'Symbols'],           
-      ayanamsas: ["Lahiri","Krishnamurti", "Raman", "FaganBradley", "Deluce", "Sassanian", 
-                  "Aldebaran15Taurus", "GalacticCenter_05_Sag"],
-      houseSystems: ["Placidus", "Koch", "Porphyrius", "Regiomontanus", "Campanus", "Equal", "Equal 2", 
-                     "Vehlow Equal", "Whole Sign", "Meridian", "Azimuthal", "Polich Page", "Alcabitus", "Morinus"],
+      ayanamsas: ["Lahiri", "Lahiri_1940", "Lahiri_VP285", "Lahiri_ICRC", "Raman", "Krishnamurti", "Krishnamurti_Senthilathiban"],
+      houseSystems: ["Placidus", "Equal", "Equal 2",  "Whole Sign"],
       subject: {name: "John Doe"},
       currentTab: 'Planets',
-      currentChildTab: 'Positions', // Default child tab
+      currentChildTab: 'Positions',
       tabs: ['Planets', 'Houses'],
       planetsChildTabs: ['Positions', 'Significators', 'Aspects'],
       housesChildTabs: ['Positions', 'Significators'], 
@@ -214,6 +245,14 @@ export default {
     selectedAyanamsa: 'fetchChartData',
     showHouses: 'fetchChartData',
     selectedHouseSystem: 'fetchChartData',
+    selectedHoraryNumber: {
+      handler(newVal, oldVal) {
+        if (newVal !== oldVal) {
+          this.fetchChartData();
+        }
+      },
+      immediate: false
+    },
     selectedLocationCity: {
       handler(newCity) {
       this.selectedLocation = this.locations[newCity];
@@ -229,6 +268,105 @@ export default {
     },
   },
   methods: {
+    handleChartSelected(chart) {
+    // Log received chart data to verify its structure and contents
+          // console.log('RECEIVED CHART Data:', chart);      
+          this.subject.name = chart.Name;
+          this.selectedHoraryNumber = chart["Horary Number"];
+          this.horaryQuestion = chart["Horary Question"];
+          // Properly set the date and time from the chart data
+          this.selectedDate = new Date(chart.Year, chart.Month - 1, chart.Day, chart.Hour, chart.Minute, chart.Second);
+          this.selectedHour = chart.Hour;
+          this.selectedMinute = chart.Minute;
+          this.selectedSecond = chart.Second;
+          this.selectedLocationCity = chart.Location;
+          this.selectedLocation = this.locations[this.selectedLocationCity];
+          if (!this.selectedLocation) {
+            console.error('Selected location is undefined. Check if the location exists in the locations list.',this.selectedLocationCity);
+            return; // Add error handling or a default value
+          }     
+          this.selectedAyanamsa = chart.Ayanamsa;
+          this.selectedHouseSystem = chart["House System"];
+          this.showHoraryChartPopup = false; // Close the popup  
+          // Now fetch the chart data with updated fields
+          this.fetchChartData();
+      },
+    async loadHoraryChart() {
+    try {
+      const response = await axios.get('http://127.0.0.1:8090/load_horary_charts');
+        // Since the server will send a 404 status when no data is found, check for response status
+        if (response.status === 200 && response.data.trim() !== '') {
+          this.horaryChartData = this.parseCSVData(response.data);
+          this.showHoraryChartPopup = true; // To control the visibility of the popup
+        } else {
+          alert('No Previously Saved Horary Data Found');
+        }
+      } catch (error) {
+        if (error.response && error.response.status === 404) {
+          alert('No Previously Saved Horary Data Found');
+        } else {
+          console.error('Error loading horary chart data:', error);
+          alert('Failed to load horary chart data.');
+        }
+      }
+    },
+    parseCSVData(csvData) {
+      const result = Papa.parse(csvData, {
+        header: true,
+        dynamicTyping: true,
+        skipEmptyLines: true
+      });
+      return result.data;
+      },
+
+    async saveHoraryChart() {
+      const year = this.selectedDate.getFullYear();
+      const month = (this.selectedDate.getMonth() + 1).toString().padStart(2, '0'); // JavaScript months are 0-indexed
+      const day = this.selectedDate.getDate().toString().padStart(2, '0');
+      const hour = this.selectedHour.toString().padStart(2, '0');
+      const minute = this.selectedMinute.toString().padStart(2, '0');
+      const second = this.selectedSecond.toString().padStart(2, '0');
+      // Construct the formattedDate string
+      const formattedDate = `${year}-${month}-${day}T${hour}:${minute}:${second}`;
+      const chartData = {
+        chartId: `${this.subject.name}_${formattedDate}_${this.selectedHoraryNumber}`,
+        name: this.subject.name,
+        horaryNumber: this.selectedHoraryNumber,
+        horaryQuestion: this.horaryQuestion,
+        year: this.selectedDate.getFullYear(),
+        month: this.selectedDate.getMonth() + 1, // JavaScript months are 0-indexed
+        day: this.selectedDate.getDate(),
+        hour: this.selectedHour,
+        minute: this.selectedMinute,
+        second: this.selectedSecond,
+        location: this.selectedLocationCity,
+        latitude: this.selectedLocation.lat,
+        longitude: this.selectedLocation.lon,
+        utc: this.selectedLocation.utc,
+        ayanamsa: this.selectedAyanamsa,
+        houseSystem: this.selectedHouseSystem
+      };
+
+      try {
+        const response = await axios.post('http://127.0.0.1:8090/save_horary_chart', chartData);
+        console.log('Save successful:', response.data);
+        // Display a confirmation pop-up
+        alert('Horary Chart data saved successfully!');
+      } catch (error) {
+        console.error('Error saving horary chart:', error);
+        alert('Failed to save horary chart data.');
+      }
+    },    
+    selectRandomHoraryNumber() {
+      this.selectedHoraryNumber = Math.floor(Math.random() * 249) + 1;
+    },
+    setCurrentTime() {
+    const now = new Date();
+    this.selectedDate = now;
+    this.selectedHour = now.getHours();
+    this.selectedMinute = now.getMinutes();
+    this.selectedSecond = now.getSeconds();
+    },    
     selectParentTab(tab) {
     this.currentTab = tab;
     // Reset child tab based on the selected parent tab
@@ -252,8 +390,11 @@ export default {
         ayanamsa: this.selectedAyanamsa,
         house_system: this.selectedHouseSystem
       };
-
-      const response = await axios.post('http://127.0.0.1:8088/get_all_horoscope_data', apiData);
+      if (this.selectedHoraryNumber) {
+        apiData.horary_number = this.selectedHoraryNumber;
+      }
+      const apiUrl = this.selectedHoraryNumber ? 'http://127.0.0.1:8088/get_all_horary_data' : 'http://127.0.0.1:8088/get_all_horoscope_data'; // Modify this line
+      const response = await axios.post(apiUrl, apiData);
 
       // Transform the response data into the format expected by your chart
       this.planets = Object.entries(response.data.consolidated_chart_data).flatMap(([sign, bodies]) => 
@@ -444,6 +585,41 @@ export default {
   src: url('~@/assets/ZodiacSigns.ttf') format('truetype');
 }
 
+.conditional-container {
+  min-height: 55px; /* Adjust based on the typical height of the content */
+}
+
+.input-container input ,
+.datepicker-container,
+.location-picker-container {
+  margin-bottom: 20px;
+}
+
+.horary-question-container {
+  display: flex;
+  justify-content: center;
+  /* margin: 20px 0; */
+}
+
+.horary-save-load-buttons-container {
+  display: flex;
+  justify-content: center; /* Space out buttons */
+  margin-top: 10px;
+  width: 100%; /* Take full width to match the input above */
+  gap: 10px;
+}
+
+.horary-quick-selection {
+    display: flex;
+    margin-top: 10px; /* Space above the button row */
+    gap: 10px; /* Space between the buttons */
+  }
+
+.horary-question {
+  margin-left: 5px;
+  width: 30%; /* Adjust this value to make the input field longer */
+}
+
 #inputFields {
   position: absolute;
   top: 0;
@@ -505,11 +681,7 @@ text {
   opacity: 1.0;
 }
 
-.input-container input ,
-.datepicker-container,
-.location-picker-container {
-  margin-bottom: 20px;
-}
+
 
 .slider {
   width: 12%;
@@ -520,6 +692,19 @@ text {
   --toggle-border-on: rgb(126, 203, 228);
 }
 
+.horary-chart-popup {
+  position: fixed; /* or 'absolute' if the parent container is positioned */
+  top: 50%;
+  left: 50%;
+  transform: translate(-50%, -50%);
+  width: 90%; /* Adjust width as necessary */
+  /* max-width: 600px; Adjust max width as necessary */
+  z-index: 1000; /* Ensure it's above other content */
+  background: white; /* Background color */
+  border: 1px solid #ccc; /* Optional border */
+  padding: 20px; /* Padding around the content */
+  box-shadow: 0 4px 6px rgba(0,0,0,0.1); /* Optional shadow for better visibility */
+}
 </style>
 
 <!-- Style for toggle button -->
