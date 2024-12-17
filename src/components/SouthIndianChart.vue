@@ -6,9 +6,13 @@
       <input id="horaryQuestion" type="text" v-model="horaryQuestion" placeholder="Enter your question" class="horary-question">
     </div>  
     <div v-if="selectedHoraryNumber" class="horary-save-load-buttons-container">
-        <button @click="saveHoraryChart">Save Horary Chart</button>
-        <button @click="loadHoraryChart">Load Horary Chart</button>
+        <button class="styled-button" @click="saveHoraryChart">Save Horary Chart</button>
+        <button class="styled-button" @click="loadHoraryChart">Load Horary Chart</button>
     </div>
+  </div>
+  <div class="timestamp-ws-toggle">
+      <label for="timestampWS">Timestamp WebSocket:</label>
+      <Toggle id="timestampWS" v-model="timestampWSEnabled"/>
   </div>
   <div class="input-container">
     <br><br><br><br>
@@ -28,14 +32,18 @@
         <option v-for="num in 249" :value="num" :key="num">{{ num }}</option>
       </select>
       <div class="horary-quick-selection">
-        <button @click="selectRandomHoraryNumber">Select Random Nr</button>
-        <button @click="setCurrentTime" class="current-time-button">Get Current Time</button>
+        <button class="styled-button" @click="selectRandomHoraryNumber">Select Random Nr</button>
+        <button class="styled-button" @click="setCurrentTime">Get Current Time</button>
       </div>
     </div>
     <br>    
     <div class="datepicker-container">
       <label for = "datepicker-container"> <b>Select Date:</b>    </label>
       <vue3Datepicker v-model="selectedDate" :format="formatDate"></vue3Datepicker>
+      <label for="monthSlider">Month:</label>
+      <input id="monthSlider" type="range" min="1" max="12" v-model="selectedMonth" @input="updateDateFromSliders" class="slider"> <br>   
+      <label for="daySlider">Day:</label>
+      <input id="daySlider" type="range" min="1" :max="30" v-model="selectedDay" @input="updateDateFromSliders" class="slider"> <br>
       <label for="hour">Hour:</label>
       <input id="hour" type="range" min="0" max="23" v-model.number="selectedHour" class="slider"> <br>
       <label for="minute">Mins:</label>
@@ -118,6 +126,21 @@
     </div>
   </div>
   <div class="chart-container"> </div>
+  <div class="prasna-data-table" v-if="selectedHoraryNumber">
+    <h3>Sri Dhrishti Prasna</h3>
+    <PrasnaDataTable v-if="prasnaData.length > 0" :prasnaData="prasnaData" :key="componentKey"/>
+    <button class="styled-button" @click="toggleFootnote">Toggle Notes</button>
+    <div v-if="showFootnote" class="prasna-footnote">
+      <b>Quick Notes:</b>
+      <ul>
+        <li>5, 8, 12 --> means Negative.</li>
+        <li>2, 6, 11 --> means Positive.</li>
+        <li>2, 6, 8, 11 --> Exceptionally Positive.</li>
+        <li>2, 6, 11 (in connection with 3, 9) --> Good profit may be booked but price may still go further in desired direction.</li>
+        <li>2, 6, 11 (in connection with 1, 4, 10) --> Indicates Mediocre profit. Eg: Closing trade at a few points in profit.</li>
+      </ul>
+    </div>      
+  </div>
   <div class="dasa-table">
       <br><br>
       <label for = "dasa-table"> <b>VimshottariDasa:</b></label>
@@ -145,6 +168,7 @@ import HousesDataTable from './HousesDataTable.vue';
 import HouseSignificators from './HouseSignificators.vue';
 import VimshottariDasaTable from './VimshottariDasaTable.vue';
 import HoraryChartsDB from './HoraryChartsDB.vue';
+import PrasnaDataTable from './PrasnaDataTable.vue';
 
 // import locationService from '../locationService.js'; 
 
@@ -158,11 +182,16 @@ export default {
     PlanetSignificators,
     PlanetAspects,
     HouseSignificators,
-    VimshottariDasaTable,    
+    VimshottariDasaTable,
+    PrasnaDataTable,
   },
   data() {
-    return {
+    return {      
+      timestampWSEnabled: false,
+      ws: null,
       selectedDate: new Date(),
+      selectedDay: new Date().getDate(),
+      selectedMonth: new Date().getMonth() + 1,
       selectedHour: 0,
       selectedMinute: 0,
       selectedSecond: 0,
@@ -179,7 +208,7 @@ export default {
       zodiacDetailsOptions: ['None', 'English', 'Symbols'],           
       ayanamsas: ["Lahiri", "Lahiri_1940", "Lahiri_VP285", "Lahiri_ICRC", "Raman", "Krishnamurti", "Krishnamurti_Senthilathiban"],
       houseSystems: ["Placidus", "Equal", "Equal 2",  "Whole Sign"],
-      subject: {name: "John Doe"},
+      subject: {name: "Dilip Rajkumar"},
       currentTab: 'Planets',
       currentChildTab: 'Positions',
       tabs: ['Planets', 'Houses'],
@@ -192,10 +221,16 @@ export default {
       houses: [],
       houses_data: [],
       house_significators: [],
-      vimso_dasa_data : []
+      vimso_dasa_data : [],
+      prasnaData: [],
+      componentKey: 0,
+      showFootnote: false
     };
   },
   computed: {
+    daysInMonth() {
+    return new Date(this.selectedDate.getFullYear(), this.selectedMonth, 0).getDate();
+    },
     selectedLocation() {
       return this.locations[this.selectedLocationCity];
     },
@@ -219,8 +254,23 @@ export default {
   
   mounted() {
     this.drawAstroChart();
+    this.connectWebSocket();
+        setTimeout(() => {
+          console.log('WebSocket state:', this.ws.readyState);
+          if (this.ws.readyState !== WebSocket.OPEN) {
+            console.log('WebSocket is not open. State:', this.ws.readyState);
+          }
+        }, 1000); 
   },
   watch: {
+    timestampWSEnabled(newVal) {
+      console.log('WebSocket toggle changed:', newVal);
+      if (newVal) {
+        this.connectWebSocket();
+      } else {
+        this.disconnectWebSocket();
+      }
+    },    
     planets: {
       handler() {
         this.drawAstroChart();
@@ -233,11 +283,17 @@ export default {
       },
       deep: true,
     },
-    selectedDate: {
-      handler() {
-        this.fetchChartData();
-      },
-      deep: true,
+    // selectedDate: {
+    //   handler() {
+    //     this.fetchChartData();
+    //   },
+    //   deep: true,
+    // },
+    selectedDate(newVal) {
+    // Update sliders if the date is changed from elsewhere
+      this.selectedDay = newVal.getDate();
+      this.selectedMonth = newVal.getMonth() + 1;
+      this.fetchChartData();
     },
     selectedHour: 'fetchChartData',
     selectedMinute: 'fetchChartData',
@@ -266,8 +322,64 @@ export default {
       },
       deep: true,
     },
+    planets_data: 'fetchSriDhristiPrasnaData',
+    houses_data: 'fetchSriDhristiPrasnaData',
+    planet_significators: 'fetchSriDhristiPrasnaData'
   },
   methods: {
+    connectWebSocket() {
+      if (this.ws) {console.log('WebSocket already connected.');
+      this.disconnectWebSocket();
+      }      
+      this.ws = new WebSocket('ws://localhost:3108');
+      this.ws.onmessage = (event) => this.handleWSMessage(event);
+      this.ws.onopen = () => console.log('WebSocket connected');
+      this.ws.onerror = (error) => console.log('WebSocket error:', error);
+      this.ws.onclose = () => console.log('WebSocket disconnected');
+    },
+    disconnectWebSocket() {
+      if (this.ws) {
+        this.ws.close();
+        this.ws = null;
+        console.log('WebSocket disconnected manually.');
+      }
+    },
+    handleWSMessage(event) {
+      if (!this.timestampWSEnabled) {
+      console.log('Timestamp WebSocket is disabled, ignoring message.');
+      return; // Ignore WebSocket messages when disabled
+      }
+      const data = JSON.parse(event.data);
+      if (data && data.timestamp) {
+        const parts = data.timestamp.split(', ');
+        if (parts.length === 6) {
+          const day = parseInt(parts[0], 10);
+          const month = parseInt(parts[1], 10) - 1; // Month is 0-indexed in JavaScript Date
+          const year = parseInt(parts[2], 10);
+          const hour = parseInt(parts[3], 10);
+          const minute = parseInt(parts[4], 10);
+          const second = parseInt(parts[5], 10);
+
+          const newDate = new Date(year, month, day, hour, minute, second);
+          this.selectedDate = newDate;
+          this.selectedDay = newDate.getDate();
+          this.selectedMonth = newDate.getMonth() + 1; // Month is 1-indexed for display
+          this.selectedHour = newDate.getHours();
+          this.selectedMinute = newDate.getMinutes();
+          this.selectedSecond = newDate.getSeconds();
+        }
+      }
+    },
+    updateDateFromSliders() {
+      let newDate = new Date(this.selectedDate.getFullYear(), this.selectedMonth - 1, this.selectedDay);
+      // Adjust day if it's out of range for the month
+      // Check if the day has rolled over to the next month due to an invalid day (e.g., June 31st)
+      if (newDate.getMonth() + 1 !== this.selectedMonth) {
+        // If it has, set the day to the last day of the correct month
+        newDate = new Date(this.selectedDate.getFullYear(), this.selectedMonth, 0);
+      }
+      this.selectedDate = newDate;
+    },
     handleChartSelected(chart) {
     // Log received chart data to verify its structure and contents
           // console.log('RECEIVED CHART Data:', chart);      
@@ -291,91 +403,126 @@ export default {
           // Now fetch the chart data with updated fields
           this.fetchChartData();
       },
-    async loadHoraryChart() {
-    try {
-      const response = await axios.get('http://127.0.0.1:8090/load_horary_charts');
-        // Since the server will send a 404 status when no data is found, check for response status
-        if (response.status === 200 && response.data.trim() !== '') {
-          this.horaryChartData = this.parseCSVData(response.data);
-          this.showHoraryChartPopup = true; // To control the visibility of the popup
-        } else {
-          alert('No Previously Saved Horary Data Found');
-        }
-      } catch (error) {
-        if (error.response && error.response.status === 404) {
-          alert('No Previously Saved Horary Data Found');
-        } else {
-          console.error('Error loading horary chart data:', error);
-          alert('Failed to load horary chart data.');
-        }
-      }
+    toggleFootnote() {
+      this.showFootnote = !this.showFootnote;
     },
+    async loadHoraryChart() {
+      try {
+        const response = await axios.get('http://127.0.0.1:8090/load_horary_charts');
+          // Since the server will send a 404 status when no data is found, check for response status
+          if (response.status === 200 && response.data.trim() !== '') {
+            this.horaryChartData = this.parseCSVData(response.data);
+            this.showHoraryChartPopup = true; // To control the visibility of the popup
+          } else {
+            alert('No Previously Saved Horary Data Found');
+          }
+        } catch (error) {
+          if (error.response && error.response.status === 404) {
+            alert('No Previously Saved Horary Data Found');
+          } else {
+            console.error('Error loading horary chart data:', error);
+            alert('Failed to load horary chart data.');
+          }
+        }
+      },
+
     parseCSVData(csvData) {
       const result = Papa.parse(csvData, {
-        header: true,
-        dynamicTyping: true,
-        skipEmptyLines: true
-      });
-      return result.data;
+          header: true,
+          dynamicTyping: true,
+          skipEmptyLines: true
+        });
+        return result.data;
       },
 
     async saveHoraryChart() {
-      const year = this.selectedDate.getFullYear();
-      const month = (this.selectedDate.getMonth() + 1).toString().padStart(2, '0'); // JavaScript months are 0-indexed
-      const day = this.selectedDate.getDate().toString().padStart(2, '0');
-      const hour = this.selectedHour.toString().padStart(2, '0');
-      const minute = this.selectedMinute.toString().padStart(2, '0');
-      const second = this.selectedSecond.toString().padStart(2, '0');
-      // Construct the formattedDate string
-      const formattedDate = `${year}-${month}-${day}T${hour}:${minute}:${second}`;
-      const chartData = {
-        chartId: `${this.subject.name}_${formattedDate}_${this.selectedHoraryNumber}`,
-        name: this.subject.name,
-        horaryNumber: this.selectedHoraryNumber,
-        horaryQuestion: this.horaryQuestion,
-        year: this.selectedDate.getFullYear(),
-        month: this.selectedDate.getMonth() + 1, // JavaScript months are 0-indexed
-        day: this.selectedDate.getDate(),
-        hour: this.selectedHour,
-        minute: this.selectedMinute,
-        second: this.selectedSecond,
-        location: this.selectedLocationCity,
-        latitude: this.selectedLocation.lat,
-        longitude: this.selectedLocation.lon,
-        utc: this.selectedLocation.utc,
-        ayanamsa: this.selectedAyanamsa,
-        houseSystem: this.selectedHouseSystem
-      };
+        const year = this.selectedDate.getFullYear();
+        const month = (this.selectedDate.getMonth() + 1).toString().padStart(2, '0'); // JavaScript months are 0-indexed
+        const day = this.selectedDate.getDate().toString().padStart(2, '0');
+        const hour = this.selectedHour.toString().padStart(2, '0');
+        const minute = this.selectedMinute.toString().padStart(2, '0');
+        const second = this.selectedSecond.toString().padStart(2, '0');
+        const prasnaDataMap = Object.fromEntries(this.prasnaData.map(item => [item.name, item.value]));
+        // Construct the formattedDate string
+        const formattedDate = `${year}-${month}-${day}T${hour}:${minute}:${second}`;
+        const chartData = {
+          chartId: `${this.subject.name}_${formattedDate}_${this.selectedHoraryNumber}`,
+          name: this.subject.name,
+          horaryNumber: this.selectedHoraryNumber,
+          horaryQuestion: this.horaryQuestion,
+          year: this.selectedDate.getFullYear(),
+          month: this.selectedDate.getMonth() + 1, // JavaScript months are 0-indexed
+          day: this.selectedDate.getDate(),
+          hour: this.selectedHour,
+          minute: this.selectedMinute,
+          second: this.selectedSecond,
+          location: this.selectedLocationCity,
+          latitude: this.selectedLocation.lat,
+          longitude: this.selectedLocation.lon,
+          utc: this.selectedLocation.utc,
+          ayanamsa: this.selectedAyanamsa,
+          houseSystem: this.selectedHouseSystem,
+          // new fields from prasnaData
+          LagnaSubLord: prasnaDataMap.LagnaSubLord,
+          LagnaSL_Significators: JSON.stringify(prasnaDataMap.LagnaSL_Significators),
+          isValidQuestion: prasnaDataMap.isValidQuestion,
+          NL_SubLord: prasnaDataMap.NL_SubLord,
+          SL_NL_Significators: JSON.stringify(prasnaDataMap.SL_NL_Significators),
+          ExpectedOutcome: prasnaDataMap.ExpectedOutcome          
+        };
 
       try {
         const response = await axios.post('http://127.0.0.1:8090/save_horary_chart', chartData);
         console.log('Save successful:', response.data);
         // Display a confirmation pop-up
         alert('Horary Chart data saved successfully!');
-      } catch (error) {
-        console.error('Error saving horary chart:', error);
-        alert('Failed to save horary chart data.');
-      }
-    },    
+        } catch (error) {
+          console.error('Error saving horary chart:', error);
+          alert('Failed to save horary chart data.');
+        }
+      },
+
     selectRandomHoraryNumber() {
-      this.selectedHoraryNumber = Math.floor(Math.random() * 249) + 1;
-    },
+        this.selectedHoraryNumber = Math.floor(Math.random() * 249) + 1;
+        this.setCurrentTime(); // Automatically set the current time when selecting a random number
+      },
+
     setCurrentTime() {
-    const now = new Date();
-    this.selectedDate = now;
-    this.selectedHour = now.getHours();
-    this.selectedMinute = now.getMinutes();
-    this.selectedSecond = now.getSeconds();
-    },    
+      const now = new Date();
+      this.selectedDate = now;
+      this.selectedHour = now.getHours();
+      this.selectedMinute = now.getMinutes();
+      this.selectedSecond = now.getSeconds();
+      },
+
     selectParentTab(tab) {
-    this.currentTab = tab;
-    // Reset child tab based on the selected parent tab
-    if (tab === 'Planets') {
-      this.currentChildTab = 'Positions';
-    } else if (tab === 'Houses') {
-      this.currentChildTab = 'Positions';
-    }
-  },
+      this.currentTab = tab;
+      // Reset child tab based on the selected parent tab
+      if (tab === 'Planets') {
+        this.currentChildTab = 'Positions';
+      } else if (tab === 'Houses') {
+        this.currentChildTab = 'Positions';
+      }
+    },
+
+    async fetchSriDhristiPrasnaData() {
+      try {
+          const response = await axios.post('http://127.0.0.1:8088/sri_dhristi_prasna', {
+            planets_data: this.planets_data,
+            houses_data: this.houses_data,
+            planet_significators: this.planet_significators,
+          });
+          // console.log('API Response:', response.data); // Log the API response to debug
+          // Convert JSON object to an array of objects for each key-value pair
+          this.prasnaData = Object.keys(response.data).map(key => ({name: key, value: response.data[key]}));
+          this.componentKey++; 
+        } catch (error) {
+          console.error('Error fetching Sri Dhristi Prasna data:', error);
+          this.prasnaData = []; // Reset or handle error with an empty array
+          throw error; // rethrow the error to handle it in the caller
+        }
+    },
+
     async fetchChartData() {
       const apiData = {
         year: this.selectedDate.getFullYear(),
@@ -393,67 +540,73 @@ export default {
       if (this.selectedHoraryNumber) {
         apiData.horary_number = this.selectedHoraryNumber;
       }
-      const apiUrl = this.selectedHoraryNumber ? 'http://127.0.0.1:8088/get_all_horary_data' : 'http://127.0.0.1:8088/get_all_horoscope_data'; // Modify this line
+      const apiUrl = this.selectedHoraryNumber ? 'http://127.0.0.1:8088/get_all_horary_data' : 'http://127.0.0.1:8088/get_all_horoscope_data'; 
       const response = await axios.post(apiUrl, apiData);
 
-      // Transform the response data into the format expected by your chart
-      this.planets = Object.entries(response.data.consolidated_chart_data).flatMap(([sign, bodies]) => 
-          Object.entries(bodies)
-            .filter(([body]) => {
-            // Exclude unwanted bodies
-            if (['Pluto', 'Syzygy', 'Chiron'].includes(body)) {
-              return false;
-            }
-            // Exclude houses if showHouses is false
-            if (!this.showHouses && /\b[IVX]+\b/.test(body)) {
-              return false;
-            }
-            return true;
-          })
-            .map(([body, data]) => ({
-              name: body,
-              degree: data.SignLonDecDeg,
-              sign: sign
-            }))
-        );
+        if (this.selectedHoraryNumber !== null && this.selectedHoraryNumber !== undefined && this.selectedHoraryNumber !== '') 
+        {
+          this.fetchSriDhristiPrasnaData(response.data.planets_data, response.data.houses_data, response.data.planet_significators);
+        }
 
-      // Assign the second response to planets_data
-      this.planets_data = response.data.planets_data
-        .filter(planet => !['Pluto', 'Syzygy', 'Chiron'].includes(planet.Object))
-        .map(planet => {
-          if (planet.isRetroGrade) {
-            return {
-              ...planet,
-              Object: `${planet.Object} [R]`
-            };
-          } else {
-            return planet;
-          }
-        });
-        
-      this.planet_significators = response.data.planet_significators;
-      this.planet_aspects = response.data.planetary_aspects;
-      // Assign the houses data from the response
-      this.houses_data = response.data.houses_data;
-      this.house_significators = response.data.house_significators;
-      // Redraw the chart with the new data
-      this.drawAstroChart();
+        // Transform the response data into the format expected by your chart
+        this.planets = Object.entries(response.data.consolidated_chart_data).flatMap(([sign, bodies]) => 
+            Object.entries(bodies)
+              .filter(([body]) => {
+              // Exclude unwanted bodies
+              if (['Asc', 'Syzygy', 'Chiron'].includes(body)) {
+                return false;
+              }
+              // Exclude houses if showHouses is false
+              if (!this.showHouses && /\b[IVX]+\b/.test(body)) {
+                return false;
+              }
+              return true;
+            })
+              .map(([body, data]) => ({
+                name: body,
+                degree: data.SignLonDecDeg,
+                sign: sign
+              }))
+          );
 
-      this.vimso_dasa_data = response.data.vimshottari_dasa_table;
-    },
+        // Assign the second response to planets_data
+        this.planets_data = response.data.planets_data
+          .filter(planet => !['Asc', 'Syzygy', 'Chiron'].includes(planet.Object))
+          .map(planet => {
+            if (planet.isRetroGrade) {
+              return {
+                ...planet,
+                Object: `${planet.Object} [R]`
+              };
+            } else {
+              return planet;
+            }
+          });
+          
+        this.planet_significators = response.data.planet_significators;
+        this.planet_aspects = response.data.planetary_aspects;
+        // Assign the houses data from the response
+        this.houses_data = response.data.houses_data;
+        this.house_significators = response.data.house_significators;
+      
+        // Redraw the chart with the new data
+        this.drawAstroChart();
+
+        this.vimso_dasa_data = response.data.vimshottari_dasa_table;
+      },
     // formatDate(date) {
     //   const options = { day: '2-digit', month: 'long', year: 'numeric', hour: '2-digit', minute: '2-digit', second: '2-digit', hour12: false};
     //   return date.toLocaleDateString('en-IN', options);
     // },    
     formatDate(date) {
-    const year = date.getFullYear();
-    const month = date.toLocaleString('default', { month: 'long' });
-    const day = date.getDate().toString().padStart(2, '0');
-    const hour = date.getHours().toString().padStart(2, '0');
-    const minute = date.getMinutes().toString().padStart(2, '0');
-    const second = date.getSeconds().toString().padStart(2, '0');
-    return `${day} ${month} ${year}, ${hour}:${minute}:${second}`;
-  },
+      const year = date.getFullYear();
+      const month = date.toLocaleString('default', { month: 'long' });
+      const day = date.getDate().toString().padStart(2, '0');
+      const hour = date.getHours().toString().padStart(2, '0');
+      const minute = date.getMinutes().toString().padStart(2, '0');
+      const second = date.getSeconds().toString().padStart(2, '0');
+      return `${day} ${month} ${year}, ${hour}:${minute}:${second}`;
+    },
 
   drawAstroChart() {
     // Clear the previous chart
@@ -585,29 +738,41 @@ export default {
   src: url('~@/assets/ZodiacSigns.ttf') format('truetype');
 }
 
-.conditional-container {
-  min-height: 55px; /* Adjust based on the typical height of the content */
+.timestamp-ws-toggle {
+  position: absolute;
+  top: 10px;
+  right: 10px; /* Align to the top right */
+  --toggle-bg-on: royalblue;
+  --toggle-border-on: rgb(126, 203, 228);
 }
+
+.timestamp-ws-toggle label {
+  margin-right: 10px; /* Add space between the label and the toggle */
+}
+
+.conditional-container {
+    min-height: 55px; /* Adjust based on the typical height of the content */
+  }
 
 .input-container input ,
 .datepicker-container,
 .location-picker-container {
-  margin-bottom: 20px;
-}
+    margin-bottom: 20px;
+  }
 
 .horary-question-container {
-  display: flex;
-  justify-content: center;
-  /* margin: 20px 0; */
-}
+    display: flex;
+    justify-content: center;
+    /* margin: 20px 0; */
+  }
 
 .horary-save-load-buttons-container {
-  display: flex;
-  justify-content: center; /* Space out buttons */
-  margin-top: 10px;
-  width: 100%; /* Take full width to match the input above */
-  gap: 10px;
-}
+    display: flex;
+    justify-content: center; /* Space out buttons */
+    margin-top: 10px;
+    width: 100%; /* Take full width to match the input above */
+    gap: 10px;
+  }
 
 .horary-quick-selection {
     display: flex;
@@ -616,94 +781,133 @@ export default {
   }
 
 .horary-question {
-  margin-left: 5px;
-  width: 30%; /* Adjust this value to make the input field longer */
-}
+    margin-left: 5px;
+    width: 30%; /* Adjust this value to make the input field longer */
+  }
 
 #inputFields {
-  position: absolute;
-  top: 0;
-  left: 50%;
-  transform: translateX(-50%);
-  text-align: center;
-  height: 10vh; 
-}
+    position: absolute;
+    top: 0;
+    left: 50%;
+    transform: translateX(-50%);
+    text-align: center;
+    height: 10vh; 
+  }
 
 body {
-  display: flex;
-  justify-content: space-between;
-  align-items: center;
-  height: 100vh;
-  margin: 0;
-  position: relative;
-}
+    display: flex;
+    justify-content: space-between;
+    align-items: center;
+    height: 100vh;
+    margin: 0;
+    position: relative;
+  }
 
 
 .dasa-table {
-  /* You might want to set a specific width or max-width here */
-  /* width: auto; */
-  margin: 0 auto; /* This will center the table */
-  display: block; /* Ensure it's treated as a block-level element */  
-  max-width: 960px;
-}
+    /* You might want to set a specific width or max-width here */
+    /* width: auto; */
+    margin: 0 auto; /* This will center the table */
+    display: block; /* Ensure it's treated as a block-level element */  
+    max-width: 960px;
+  }
+
 .chart-container {
-  position: absolute;
-  top: 100px;
-  left: 50%;
-  transform: translateX(-50%);
-}
+    position: absolute;
+    top: 100px;
+    left: 50%;
+    transform: translateX(-50%);
+  }
 
 .tabs button {
-  padding: 10px;
-  border: none;
-  background-color: #f0f0f0;
-  margin-right: 5px;
-  cursor: pointer;
-}
+    padding: 10px;
+    border: none;
+    background-color: #f0f0f0;
+    margin-right: 5px;
+    cursor: pointer;
+  }
 
 .tabs button.active {
-  background-color: #F0FFFF; /* Matching the SVG box color */
-  font-weight: bold; /* Keeping the text bold */
-  color: #000; /* Optional: Setting text color to black for better contrast */
-  border: 1px solid #007bff; /* Optional: Adding a blue border for a bit of contrast */
-}
+    background-color: #F0FFFF; /* Matching the SVG box color */
+    font-weight: bold; /* Keeping the text bold */
+    color: #000; /* Optional: Setting text color to black for better contrast */
+    border: 1px solid #007bff; /* Optional: Adding a blue border for a bit of contrast */
+  }
 
 .tab-content {
-  /* padding: 20px; */
-  margin: 50px auto 0;
-  max-width: 960px;
-  /* border: 1px solid #ddd;
-  border-top: none; */
-}
+    /* padding: 20px; */
+    margin: 50px auto 0;
+    max-width: 960px;
+    /* border: 1px solid #ddd;
+    border-top: none; */
+  }
 
 text {
-  transform: translate(25px, 55px); 
-  opacity: 1.0;
-}
-
-
+    transform: translate(25px, 55px); 
+    opacity: 1.0;
+  }
 
 .slider {
-  width: 12%;
-}
+    width: 12%;
+  }
 
 .show-houses-toggle {
-  --toggle-bg-on: royalblue;
-  --toggle-border-on: rgb(126, 203, 228);
-}
+    --toggle-bg-on: royalblue;
+    --toggle-border-on: rgb(126, 203, 228);
+  }
 
 .horary-chart-popup {
-  position: fixed; /* or 'absolute' if the parent container is positioned */
-  top: 50%;
-  left: 50%;
-  transform: translate(-50%, -50%);
-  width: 90%; /* Adjust width as necessary */
-  /* max-width: 600px; Adjust max width as necessary */
-  z-index: 1000; /* Ensure it's above other content */
-  background: white; /* Background color */
-  border: 1px solid #ccc; /* Optional border */
-  padding: 20px; /* Padding around the content */
-  box-shadow: 0 4px 6px rgba(0,0,0,0.1); /* Optional shadow for better visibility */
+    position: fixed; /* or 'absolute' if the parent container is positioned */
+    top: 50%;
+    left: 50%;
+    transform: translate(-50%, -50%);
+    width: 90%; /* Adjust width as necessary */
+    /* max-width: 600px; Adjust max width as necessary */
+    z-index: 1000; /* Ensure it's above other content */
+    background: white; /* Background color */
+    border: 1px solid #ccc; /* Optional border */
+    padding: 20px; /* Padding around the content */
+    box-shadow: 0 4px 6px rgba(0,0,0,0.1); /* Optional shadow for better visibility */
+  }
+
+.prasna-data-table {
+    position: absolute;
+    top: 100px;
+    right: 200px; /* Adjust as necessary */
+    width: 400px; /* Adjust as necessary */
+  }
+
+.prasna-data-table h3 {
+    text-align: center;
+  }
+
+.prasna-footnote {
+    font-size: 0.8em; /* Smaller font size for footnotes */
+    color: #666; /* Lighter text color for less emphasis */
+    padding-top: 10px; /* Space above the footnote */
+    text-align: left; 
+    padding-left: 10px; /* Add some padding on the left for better spacing */
+  }
+
+.styled-button {
+  background-color: #007bff; /* Bootstrap primary color */
+  color: white;
+  border: none;
+  padding: 5px 11px; /* Reduced padding */
+  font-size: 0.875rem; /* Smaller font size */
+  border-radius: 4px; /* Adjusted for smaller size */
+  cursor: pointer;
+  outline: none;
+  transition: background-color 0.3s, transform 0.2s;
+}
+
+.styled-button:hover {
+  background-color: #0056b3; /* A darker shade for hover */
+  transform: scale(1.05); /* Slightly enlarge on hover */
+}
+
+.styled-button:active {
+  transform: scale(0.95); /* Slightly shrink when clicked */
 }
 </style>
 

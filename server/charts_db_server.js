@@ -11,7 +11,7 @@ app.use(cors());
 
 const dataPath = path.join(__dirname, 'data', 'horary_charts.csv');
 // Ensure the CSV headers match the structure of your chartData object
-const csvHeaders = "Chart ID,Name,Horary Number,Horary Question,Year,Month,Day,Hour,Minute,Second,Location,Latitude,Longitude,UTC,Ayanamsa,House System\n";
+const csvHeaders = "Chart ID,Name,Horary Number,Horary Question,Year,Month,Day,Hour,Minute,Second,Location,Latitude,Longitude,UTC,Ayanamsa,House System,LagnaSubLord,LagnaSL_Significators,isValidQuestion,NL_SubLord,SL_NL_Significators,ExpectedOutcome\n";
 
 // Endpoint to load horary charts
 app.get('/load_horary_charts', (req, res) => {
@@ -40,9 +40,8 @@ app.get('/load_horary_charts', (req, res) => {
 });
 
 app.post('/save_horary_chart', (req, res) => {
-  const { chartId, name, horaryNumber, horaryQuestion, year, month, day, hour, minute, second, location, latitude, longitude, utc, ayanamsa, houseSystem } = req.body;
-  // Format the CSV line to match the incoming data structure
-  const csvLine = `"${chartId}","${name}",${horaryNumber},"${horaryQuestion}",${year},${month},${day},${hour},${minute},${second},"${location}",${latitude},${longitude},"${utc}","${ayanamsa}","${houseSystem}"\n`;
+  const { chartId, name, horaryNumber, horaryQuestion, year, month, day, hour, minute, second, location, latitude, longitude, utc, ayanamsa, houseSystem, LagnaSubLord, LagnaSL_Significators, isValidQuestion, NL_SubLord, SL_NL_Significators, ExpectedOutcome } = req.body;
+  const csvLine = `"${chartId}","${name}",${horaryNumber},"${horaryQuestion}",${year},${month},${day},${hour},${minute},${second},"${location}",${latitude},${longitude},"${utc}","${ayanamsa}","${houseSystem}","${LagnaSubLord}","${LagnaSL_Significators}",${isValidQuestion},"${NL_SubLord}","${SL_NL_Significators}","${ExpectedOutcome}"\n`;
 
   fs.open(dataPath, 'a+', (err, fd) => {
     if (err) {
